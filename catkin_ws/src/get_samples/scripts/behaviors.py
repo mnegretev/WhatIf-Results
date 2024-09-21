@@ -85,10 +85,10 @@ def callback_enable_cruise(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     max_speed = initial_max_speed
     enable_cruise = msg.data
-    goal_rho_l   = 430.0
-    goal_theta_l = 2.23
-    goal_rho_r   = 430.0
-    goal_theta_r = 0.91
+    goal_rho_l   = 481.0
+    goal_theta_l = 2.085
+    goal_rho_r   = 466.0
+    goal_theta_r = 0.99
     if(enable_cruise):
         enable_follow = False
 
@@ -97,10 +97,10 @@ def callback_enable_follow(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     max_speed = initial_max_speed
     enable_follow = msg.data
-    goal_rho_l   = 430.0
-    goal_theta_l = 2.23
-    goal_rho_r   = 430.0
-    goal_theta_r = 0.91
+    goal_rho_l   = 481.0
+    goal_theta_l = 2.085
+    goal_rho_r   = 466.0
+    goal_theta_r = 0.99
     if(enable_follow):
         enable_cruise = False
 
@@ -119,10 +119,10 @@ def callback_start_swive_left(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     #start_swive_left = msg.data
     max_speed = 10
-    goal_rho_l   = 395.0
-    goal_theta_l = 2.33
-    goal_rho_r   = 446.0
-    goal_theta_r = 0.94
+    goal_rho_l   = 385.0
+    goal_theta_l = 2.37
+    goal_rho_r   = 508.0
+    goal_theta_r = 1.16
     # if msg.data:
     #     enable_follow, enable_cruise = False, False
 
@@ -131,10 +131,10 @@ def callback_start_swive_right(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     #start_swive_right = msg.data
     max_speed = 10
-    goal_rho_l   = 446.0
-    goal_theta_l = 2.21
-    goal_rho_r   = 388.0
-    goal_theta_r = 0.79
+    goal_rho_l   = 514.0
+    goal_theta_l = 1.93
+    goal_rho_r   = 300.0
+    goal_theta_r = 0.57
     # if msg.data:
     #     enable_follow, enable_cruise = False, False
 
@@ -236,10 +236,10 @@ def main():
     # goal_theta_l = 2.4
     # goal_rho_r   = 430.0
     # goal_theta_r = 0.895
-    goal_rho_l   = 430.0
-    goal_theta_l = 2.23
-    goal_rho_r   = 430.0
-    goal_theta_r = 0.91
+    goal_rho_l   = 481.0
+    goal_theta_l = 2.085
+    goal_rho_r   = 466.0
+    goal_theta_r = 0.99
     
     print('INITIALIZING BEHAVIORS NODE (SEP 2024)...', flush=True)
     rospy.init_node('lane_tracking')

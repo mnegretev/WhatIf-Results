@@ -93,12 +93,13 @@ StraightRoadSegment {
   translation 120 0 0.1
   name "segment_2"
   length 200
+  width 10
   roadBoundingObject TRUE
   rightBorderBoundingObject TRUE
   leftBorderBoundingObject TRUE
 }
 DEF BMW_X5 BmwX5 {
-  translation 20 1.77 0.279016
+  translation 20 2.65 0.279016
   rotation -1.1889576741483064e-14 -1 2.2651330356464375e-12 0.004494610325100353
   color 0.643137 0 0
   controller "bmw_x5_controller"
@@ -124,6 +125,7 @@ StraightRoadSegment {
   translation 10 0 0.1
   name "segment_1"
   length 110
+  width 10
   roadBoundingObject TRUE
   rightBorderBoundingObject TRUE
   leftBorderBoundingObject TRUE
