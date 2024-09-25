@@ -22,21 +22,31 @@ Note: It is assumed that Ubuntu OS, ROS platform and Webots simulator are alread
 * $ echo "source ~/WhatIf-Results/catkin_ws/devel/setup.bash" >> ~/.bashrc
 * $ source ~/.bashrc
 
-## To test the environment
+## Experimentos:
 
-* $ roslaunch get_samples what_if.launch 
+Carril sin cruce con cuatro obstáculo y vehículo autónomo en carril izquierdo
+* $ roslaunch get_samples what_if_straight_left.launch
 
-* En la GUI presionar botón de Start antes de 50 segundos de iniciado el mundo
-* Con los botones de la GUI se activan los comportamientos
+Carril sin cruce con cuatro obstáculo y vehículo autónomo en carril derecho
+* $ roslaunch get_samples what_if_straight_right.launch
 
-## Videos
-* A vehicle approaching in the opposite direction
-  
-https://github.com/hector-aviles/JIFS2024/assets/67079858/0860044b-ea15-4925-a62f-529eb55a9948
+Mundo con cruce y un solo obstáculo en carril transversal:
+* $ roslaunch get_samples what_if_cross.launch cross:=01
 
-* A vehicle travelling in the transverse direction
+Mundo con cruce y un solo obstáculo en carril del vehículo:
+* $ roslaunch get_samples what_if_cross.launch cross:=02
 
-https://github.com/hector-aviles/JIFS2024/assets/67079858/03caaf6b-ab8c-444d-a79c-f0df0bf894c9
+Mundo con cruce y dos obstáculos en carril transversal:
+* $ roslaunch get_samples what_if_cross.launch cross:=03
+
+Mundo con cruce y dos obstáculos en carril del vehículo:
+* $ roslaunch get_samples what_if_cross.launch cross:=04
+
+Mundo con cruce y cuatro obstáculos (dos en carril del vehículo y dos en transversal):
+* $ roslaunch get_samples what_if_cross.launch cross:=05
+
+Con los botones de la GUI se activan los comportamientos
+
 
 ## Contact
 
