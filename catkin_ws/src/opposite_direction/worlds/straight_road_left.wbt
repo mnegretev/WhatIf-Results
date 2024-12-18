@@ -230,6 +230,7 @@ DEF vehicle_3 CitroenCZero {
     SmsUmrr-0a29 {
     }
   ]
+  synchronization FALSE
 }
 Robot {
   controller "supervisor"
