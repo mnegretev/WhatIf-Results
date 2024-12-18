@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""
+This node detects if the car succeeded its last action using Euclidean distance between points in two consecutive readings of the accelerometer sensor
+"""
+
+# https://sensible4.fi/technology/articles/obstacle-detection-and-tracking-system-odts-enables-a-smooth-safe-ride-for-everyone/
+# https://cyberbotics.com/doc/reference/radar?tab-language=python
+# https://cyberbotics.com/doc/guide/radar-sensors?version=R2022a
+# https://cyberbotics.com/doc/reference/radar
+# http://docs.ros.org/en/noetic/api/radar_msgs/html/index-msg.html
+# http://docs.ros.org/en/noetic/api/radar_msgs/html/msg/RadarReturn.html
+# https://index.ros.org/p/radar_msgs/github-ros-perception-radar_msgs/
+# http://docs.ros.org/en/noetic/api/webots_ros/html/index-msg.html
+# http://docs.ros.org/en/noetic/api/webots_ros/html/msg/RadarTarget.html
+# http://wiki.ros.org/ainstein_radar/Tutorials/Target%20tracking%20from%20raw%20radar%20detections
+
+
+# IMPORTANT: sudo apt-get install ros-noetic-radar-msgs
+
+
+import math
+import rospy
+from std_msgs.msg import Bool, Float64, String
+from rosgraph_msgs.msg import Clock 
+import time
+from geometry_msgs.msg import Pose2D
+from radar_msgs.msg import RadarReturn, RadarScan
+
+def mysleep(secs):
+    global curr_time
+
+    init_time = curr_time        
+    diff = 0.0
+    while diff <= secs and not rospy.is_shutdown(): # and not rospy.is_shutdown():
+       diff  = curr_time - init_time
+
+def callback_sim_time(msg):
+    global curr_time             
+    sim_time = msg
+    sim_secs = sim_time.clock.secs 
+    sim_nsecs = sim_time.clock.nsecs
+    curr_time = sim_secs + sim_nsecs / (10**9) 
+    
+def callback_curr_pos(msg):
+    global sdc_curr_pos   
+
+    sdc_curr_pos.x = msg.x
+    sdc_curr_pos.y = msg.y
+    sdc_curr_pos.theta = msg.theta
+    
+def callback_free_N(msg):
+    global free_N
+    free_N = msg.data
+
+def callback_free_NW(msg):
+    global free_NW
+    free_NW = msg.data
+
+def callback_free_W(msg):
+    global free_W
+    free_W = msg.data
+    
+def callback_free_NE(msg):
+    global free_NE
+    free_NE = msg.data    
+
+def callback_free_E(msg):
+    global free_E
+    free_E = msg.data    
+
+def callback_curr_lane(msg):
+    global curr_lane
+    curr_lane = msg.data   
+    
+def callback_action(msg):
+    global action
+    action = msg.data             
+    
+def callback_sdc_vel(msg):
+    global sdc_vel
+    sdc_vel = msg.data 
+
+def callback_sdc_steer(msg):
+    global sdc_steer
+    sdc_steer = msg.data  
+    
+def callback_dist_north(msg):
+    global dist_north
+    dist_north = msg.data
+    
+def callback_radar_scan(msg):
+    global radar_scan
+    radar_scan = msg 
+            
+def main():
+    global latent_collision, curr_time, sdc_vel, sdc_steer, sdc_curr_pos, car_1_pos, car_2_pos, dist_north, curr_lane, free_N, free_NW, free_W, free_NE, free_E, action, radar_scan    
+    
+    print("INITIALIZING LATENT_COLLISION_DETECTOR...", flush=True)
+    rospy.init_node("latent_collision_detector")
+    rate = rospy.Rate(10)
+        
+    sdc_curr_pos = Pose2D()   
+    car_1_pos = Pose2D() 
+    car_2_pos = Pose2D()    
+
+    radar_scan = RadarScan()    
+    radar_return = RadarReturn()
+        
+    rospy.Subscriber("/clock", Clock, callback_sim_time)            
+                
+    rospy.Subscriber("/self_driving_pose", Pose2D, callback_curr_pos)
+    rospy.Subscriber("/current_lane", Bool, callback_curr_lane)    
+    rospy.Subscriber("/speed", Float64, callback_sdc_vel)
+    rospy.Subscriber("/steering", Float64, callback_sdc_steer)
+    rospy.Subscriber("/obstacle/dist_north", Float64, callback_dist_north)
+    
+    rospy.Subscriber("/free/north", Bool, callback_free_N)              
+    rospy.Subscriber("/free/north_west", Bool, callback_free_NW)
+    rospy.Subscriber("/free/west", Bool, callback_free_W)
+    rospy.Subscriber("/free/north_east", Bool, callback_free_NE)
+    rospy.Subscriber("/free/east", Bool, callback_free_E) 
+    rospy.Subscriber("/action", String, callback_action)       
+    rospy.Subscriber("/radar_scan", RadarScan, callback_radar_scan)           
+    
+    pub_latent_collision  = rospy.Publisher("/latent_collision", Bool, queue_size=1)    
+    latent_collision = False
+    
+    # Extras
+    sdc_curr_pos.x = sdc_curr_pos.y = sdc_curr_pos.theta = 0.0 
+    sdc_vel = 0.0
+    sdc_steer = 0.0   
+        
+    dist_north = prev_dist_north = 100000.0
+    delta_dist_north = 0.0  
+    dist_threshold = 30
+    free_N = True
+    free_NW = True
+    free_W  = True
+    free_NE = True
+    free_E  = True
+    curr_lane = True
+    action = 'NA'       
+                        
+    max_fov = math.radians(10)  # 10 degrees in radians
+    min_fov = math.radians(5)   # 5 degrees in radians
+    fov = min_fov
+    while not rospy.is_shutdown():
+
+       latent_collision = False
+       # remove unnecessary data first 
+       radar_scan.returns = [r for r in radar_scan.returns if r.range != 1.0]
+       '''
+       for i, radar_return in enumerate(radar_scan.returns):
+         print("Num returns=", len(radar_scan.returns), 
+          "i=", i,
+          "doppler_velocity=", radar_return.doppler_velocity,
+          "Range=", radar_return.range, 
+          "Amplitude=", radar_return.amplitude, 
+          "Azimuth=", radar_return.azimuth, 
+          "fov=", fov,  
+          sep=" ", flush=True)       
+       '''
+       closest_obstacle = None
+       obst_at_front = False 
+       obst_opposite_dir = False 
+       obst_stationary = False 
+       obst_same_dir = False
+       min_range = float('inf')
+       for i, radar_return in enumerate(radar_scan.returns):
+         if (-fov <= radar_return.azimuth <= fov and 
+              radar_return.range <= 60
+            ):
+            if radar_return.range < min_range:
+              min_range = radar_return.range
+              closest_obstacle = radar_return                 
+
+       fov = min_fov         
+       if closest_obstacle != None:
+         # max_fov = +-10, min_foc = +-5 with respect to 
+         # the minimum distance observed                      
+         fov = min_fov + (
+                  (max_fov - min_fov) * 
+                  ((60 - closest_obstacle.range) / 59)
+         )           
+         '''
+         print("doppler_velocity=", closest_obstacle.doppler_velocity,
+           "Range=", closest_obstacle.range, 
+           "Amplitude=", closest_obstacle.amplitude, 
+           "Azimuth=", closest_obstacle.azimuth, 
+           "New fov=", fov, sep=" ", flush=True)
+         ''' 
+         # Compute frontal obstacle velocity 
+         # V_AB = V_A - V_B;  V_B = V_A + V_AB   
+         obst_at_front = True  
+         # self-driving car (sdc_vel) from km/h to m/s         
+         sdc_vel_ms = (sdc_vel * (1000)) / 3600       
+         obst_vel = sdc_vel_ms + closest_obstacle.doppler_velocity
+         if -1.0 < obst_vel <= 1.0:
+            obst_vel = 0.0 # Assume the obstacle is stationary
+            obst_stationary = True
+            #print("Obstacle is stationary =", obst_vel, flush = True)
+         elif obst_vel < -1.0:
+            obst_opposite_dir = True   
+            #print("Obstacle is moving towards =", obst_vel, flush = True)
+         else:                   
+            obst_same_dir = True   
+            #print("Obstacle is moving in the same direction =", obst_vel, flush = True)
+
+       # Patch   
+       if curr_lane:
+          free_NE = free_N
+       else: 
+          free_NW = free_N             
+         
+       if ((obst_at_front and (obst_stationary or obst_opposite_dir))
+            or (action == 'change_to_right' and curr_lane)
+            or (action == 'change_to_left' and not curr_lane)
+            or (action == 'change_to_left' and curr_lane and (free_NW or free_W))
+            or (action == 'change_to_right' and (not curr_lane and (free_NE or free_E)))  
+          ):   
+          latent_collision = True  
+
+       pub_latent_collision.publish(latent_collision)               
+
+       if latent_collision:
+          print("Warning! Collision ahead detected.", flush = True)  
+
+       rate.sleep()
+    
+
+if __name__ == "__main__":
+    main()    
+
+#          string = "curr_time=" + str(curr_time) + " prev_time=" + str(prev_time) + " delta_t=" + str(delta_t) + " requested_sdc_vel_sdc=" + str(sdc_vel) + " estimated_sdc_vel_sdc=" + str(estimated_sdc_vel_sdc) + " estimated_sdc_vel_car1=" + str(estimated_sdc_vel_car1) + " estimated_sdc_vel_car2=" + str(estimated_sdc_vel_car2) + " sdc_curr_pos.x=" + str(sdc_curr_pos.x) + " car_1_pos.x=" + str(car_1_pos.x) + " car_2_pos.x=" + str(car_2_pos.x)
+#         print(string, flush = True)   
+
+
+'''
+       for i, radar_return in enumerate(radar_scan.returns):
+         print("Num returns=", len(radar_scan.returns), 
+          "i=", i,
+          "doppler_velocity=", radar_return.doppler_velocity,
+          "Range=", radar_return.range, 
+          "Amplitude=", radar_return.amplitude, 
+          "Azimuth=", radar_return.azimuth, 
+          "Self-driving sdc_vel", sdc_vel_ms, 
+          sep=" ", flush=True)
+'''
+         

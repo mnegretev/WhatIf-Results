@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""
+This node detects potential frontal (or sideswipe) collisions using radar readings and knowledge about the current state-action pair.
+"""
+
+# https://sensible4.fi/technology/articles/obstacle-detection-and-tracking-system-odts-enables-a-smooth-safe-ride-for-everyone/
+# https://cyberbotics.com/doc/reference/radar?tab-language=python
+# https://cyberbotics.com/doc/guide/radar-sensors?version=R2022a
+# https://cyberbotics.com/doc/reference/radar
+# http://docs.ros.org/en/noetic/api/radar_msgs/html/index-msg.html
+# http://docs.ros.org/en/noetic/api/radar_msgs/html/msg/RadarReturn.html
+# https://index.ros.org/p/radar_msgs/github-ros-perception-radar_msgs/
+# http://docs.ros.org/en/noetic/api/webots_ros/html/index-msg.html
+# http://docs.ros.org/en/noetic/api/webots_ros/html/msg/RadarTarget.html
+# http://wiki.ros.org/ainstein_radar/Tutorials/Target%20tracking%20from%20raw%20radar%20detections
+
+# IMPORTANT: sudo apt-get install ros-noetic-radar-msgs
+
+import math
+import rospy
+from std_msgs.msg import Bool, Float64, String, Empty
+from rosgraph_msgs.msg import Clock 
+import time
+from geometry_msgs.msg import Pose2D
+from radar_msgs.msg import RadarReturn, RadarScan
+
+
+def mysleep(secs):
+    global curr_time
+
+    init_time = curr_time        
+    diff = 0.0
+    while diff <= secs and not rospy.is_shutdown(): # and not rospy.is_shutdown():
+       diff  = curr_time - init_time
+
+def callback_sim_time(msg):
+    global curr_time             
+    sim_time = msg
+    sim_secs = sim_time.clock.secs 
+    sim_nsecs = sim_time.clock.nsecs
+    curr_time = sim_secs + sim_nsecs / (10**9) 
+    
+def callback_free_N(msg):
+    global free_N
+    free_N = msg.data
+
+def callback_free_NW(msg):
+    global free_NW
+    free_NW = msg.data
+
+def callback_free_W(msg):
+    global free_W
+    free_W = msg.data
+    
+def callback_free_NE(msg):
+    global free_NE
+    free_NE = msg.data    
+
+def callback_free_E(msg):
+    global free_E
+    free_E = msg.data    
+
+def callback_curr_lane(msg):
+    global curr_lane
+    curr_lane = msg.data   
+    
+def callback_action(msg):
+    global action
+    action = msg.data             
+    
+def callback_sdc_vel(msg):
+    global sdc_vel_kh
+    sdc_vel_kh = msg.data 
+
+def callback_sdc_steer(msg):
+    global sdc_steer
+    sdc_steer = msg.data  
+        
+def callback_radar_scan(msg):
+    global radar_scan
+    radar_scan = msg 
+    
+def callback_evasion(msg):
+    global evasion
+    evasion = msg.data         
+            
+def main():
+    global latent_collision, curr_time, sdc_vel_kh, sdc_steer, curr_lane, free_N, free_NW, free_W, free_NE, free_E, action, radar_scan    
+    
+    print("INITIALIZING LATENT_COLLISION_DETECTOR...", flush=True)
+    rospy.init_node("latent_collision_detector")
+    rate = rospy.Rate(10)
+        
+    sdc_curr_pos = Pose2D()   
+    car_1_pos = Pose2D() 
+    car_2_pos = Pose2D()    
+
+    radar_scan = RadarScan()    
+    radar_return = RadarReturn()
+        
+    rospy.Subscriber("/clock", Clock, callback_sim_time)            
+                
+    rospy.Subscriber("/current_lane", Bool, callback_curr_lane)    
+    rospy.Subscriber("/speed", Float64, callback_sdc_vel)
+    rospy.Subscriber("/steering", Float64, callback_sdc_steer)
+    
+    rospy.Subscriber("/free/north", Bool, callback_free_N)              
+    rospy.Subscriber("/free/north_west", Bool, callback_free_NW)
+    rospy.Subscriber("/free/west", Bool, callback_free_W)
+    rospy.Subscriber("/free/north_east", Bool, callback_free_NE)
+    rospy.Subscriber("/free/east", Bool, callback_free_E) 
+    rospy.Subscriber("/action", String, callback_action)   
+    rospy.Subscriber("/evasion", Bool, callback_evasion)           
+    rospy.Subscriber("/radar_scan", RadarScan, callback_radar_scan)
+    
+    pub_latent_collision  = rospy.Publisher("/latent_collision", Bool, queue_size=1)    
+    latent_collision = False
+    
+    # Extras
+    sdc_vel_kh = 0.0
+    sdc_steer = 0.0   
+        
+    free_N = True
+    free_NW = True
+    free_W  = True
+    free_NE = True
+    free_E  = True
+    curr_lane = True
+    action = None   
+    
+    # Dictionary of state
+    state = {} 
+                         
+    max_fov = math.radians(10)/2  # 20 degrees in radians
+    min_fov = math.radians(5)/2   # 10 degrees in radians
+    fov = min_fov
+    safe_dist = 15
+    
+    # Wait for policy node
+    rospy.wait_for_message('/policy_started', Empty, timeout=None)
+    
+    while not rospy.is_shutdown():
+    
+       # Patch   
+       if curr_lane:
+         free_NE = free_N
+       else:
+         free_NW = free_N    
+    
+       state.clear()
+       #state["action"] = action
+       state["free_NW"] = free_NW
+       state["free_W"] = free_W
+       state["free_NE"] = free_NE
+       state["free_E"] = free_E
+       state["curr_lane"] = curr_lane    
+
+       latent_collision = False
+       
+       # remove unnecessary data first 
+       radar_scan.returns = [r for r in radar_scan.returns if r.range != 1.0]
+
+       closest_obstacle = None
+       obst_at_front = False 
+       obst_opposite_dir = False 
+       obst_stationary = False 
+       obst_same_dir = False
+       obst_vel = 0.0
+       obst_dist = float('inf')
+       valid_range = 60
+       # Get the closest vehicle in front
+       for i, radar_return in enumerate(radar_scan.returns):
+         if (-fov <= radar_return.azimuth <= fov and 
+                               radar_return.range <= valid_range
+            ):
+            if radar_return.range < obst_dist:
+              obst_dist = radar_return.range
+              closest_obstacle = radar_return 
+       
+       sdc_steer = 0.09
+       fov = min_fov         
+       if closest_obstacle != None:
+
+         obst_at_front = True  
+
+         # max_fov = +-10, min_foc = +-5 with respect to 
+         # the minimum distance observed      
+         fov = min_fov + (
+                  (max_fov - min_fov) * 
+                  ((valid_range - closest_obstacle.range) / 
+                   (valid_range - 1))
+         ) 
+
+         # self-driving car (sdc_vel_kh) from km/h to m/s         
+         sdc_vel_ms = (sdc_vel_kh * (1000)) / 3600       
+         # V_AB = V_A - V_B ==> V_B = V_A + V_AB
+         obst_vel = sdc_vel_ms + closest_obstacle.doppler_velocity
+         if -1.0 < obst_vel <= 1.0:
+            obst_vel = 0.0 # Assume the obstacle is stationary
+            obst_stationary = True
+         elif obst_vel < -1.0:
+            obst_opposite_dir = True   
+         else:                   
+            obst_same_dir = True          
+       '''            
+       else: 
+         print("Closest obstacle not found", flush = True) 
+       ''' 
+        
+       # Conditions of potential collisions 
+       if obst_at_front and (obst_stationary or obst_opposite_dir):
+          latent_collision = True
+          #print(closest_obstacle, flush=True) 
+          print("Obstacle in front", flush = True)
+       elif action == 'change_to_right' and curr_lane and not evasion:
+          latent_collision = True
+          #print(closest_obstacle, flush=True) 
+          print("Latent collision while changing to right on right lane", flush = True)
+       elif action == 'change_to_left' and not curr_lane and not evasion:
+          latent_collision = True
+          #print(closest_obstacle, flush=True)
+          print("Latent collision while changing to left on left lane", flush = True)
+       elif action == 'change_to_left' and curr_lane and (not free_NW or not free_W):
+          latent_collision = True
+          #print(closest_obstacle, flush=True)
+          print("Latent collision while changing to left with obstacles", flush = True)         
+       elif action == 'change_to_right' and (not curr_lane and (not free_NE or not free_E)):   
+          latent_collision = True
+          #print(closest_obstacle, flush=True) 
+          print("Latent collision while changing to right with obstacles", flush = True)
+       elif action == "cruise" and obst_same_dir and (obst_dist < safe_dist and  obst_vel < sdc_vel_ms):
+          latent_collision = True 
+          #print(closest_obstacle, flush=True)         
+          print("Latent collision while approaching to a vehicle travelling on the same lane and direction possibly at a slower velocity", flush = True)
+       '''           
+       else:
+          print("No crash condition detected", flush = True)   
+       '''        
+          
+       #print("fov=", fov, flush=True)  
+       pub_latent_collision.publish(latent_collision)               
+
+       if latent_collision:
+          print("Warning! Potential collision detected", flush = True)  
+          
+
+       rate.sleep()
+    
+
+if __name__ == "__main__":
+    main()    
+
+

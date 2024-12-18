@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""
+This node implements the action policy of the self-driving car
+obtained from modeling and training a multilayer perceptron using Sklearn.
+This node provides several functions to detect 
+other vehicles around the car and as a consequence to execute one of 6 actions available. If there is are potential collisions, counterfactual queries will be performed. 
+"""
+import rospy
+from std_msgs.msg import Float64MultiArray, Empty, Bool, String, Float64
+from rosgraph_msgs.msg import Clock 
+import sys
+import pandas as pd
+import pickle
+import time
+import numpy as np
+import os
+import rospkg
+
+
+def callback_free_N(msg):
+    global free_N
+    free_N = msg.data
+
+def callback_free_NW(msg):
+    global free_NW
+    free_NW = msg.data
+
+def callback_free_W(msg):
+    global free_W
+    free_W = msg.data
+    
+def callback_free_SW(msg):
+    global free_SW
+    free_SW = msg.data
+    
+def callback_free_NE(msg):
+    global free_NE
+    free_NE = msg.data    
+
+def callback_free_E(msg):
+    global free_E
+    free_E = msg.data    
+
+def callback_free_SE(msg):
+    global free_SE
+    free_SE = msg.data    
+        
+def callback_curr_lane(msg):
+    global curr_lane
+    curr_lane = msg.data
+    
+def callback_change_lane_finished(msg):
+    global change_lane_finished
+    change_lane_finished = msg.data    
+
+def callback_latent_collision(msg):
+    global latent_collision
+    latent_collision = msg.data
+
+def cruise():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action    
+    pub_keep_distance.publish(False)
+    pub_change_lane_on_left.publish(False)
+    pub_change_lane_on_right.publish(False)
+    pub_swerve_right.publish(False)    
+    pub_swerve_left.publish(False)                
+    pub_cruise.publish(True)    
+
+def keep_distance():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action, curr_lane
+    pub_cruise.publish(False)
+    pub_change_lane_on_left.publish(False)
+    pub_change_lane_on_right.publish(False)
+    pub_swerve_right.publish(False)    
+    pub_swerve_left.publish(False)         
+    pub_keep_distance.publish(True)    
+
+def change_lane_on_left():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_swerve_right, pub_swerve_left, pub_action, curr_lane
+
+    pub_keep_distance.publish(False)
+    pub_cruise.publish(False)    
+    pub_change_lane_on_right.publish(False)
+    pub_swerve_right.publish(False)    
+    pub_swerve_left.publish(False)     
+    pub_change_lane_on_left.publish(True)
+    
+def change_lane_on_right():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action, curr_lane
+
+    pub_keep_distance.publish(False)
+    pub_cruise.publish(False)    
+    pub_change_lane_on_left.publish(False)
+    pub_swerve_right.publish(False)    
+    pub_swerve_left.publish(False)         
+    pub_change_lane_on_right.publish(True)  
+    
+def swerve_right():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action    
+    pub_keep_distance.publish(False)
+    pub_change_lane_on_left.publish(False)
+    pub_change_lane_on_right.publish(False)    
+    pub_cruise.publish(False)    
+    pub_swerve_left.publish(False)    
+    pub_swerve_right.publish(True)    
+    
+def swerve_left():
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action    
+    pub_keep_distance.publish(False)
+    pub_change_lane_on_left.publish(False)
+    pub_change_lane_on_right.publish(False)    
+    pub_cruise.publish(False)    
+    pub_swerve_right.publish(False)    
+    pub_swerve_left.publish(True)        
+      
+            
+def main(speed_left, speed_right, MLP_path, counterfactuals_path):
+    global free_N, free_NW, free_W, free_SW, free_NE, free_E, free_SE,  curr_lane, change_lane_finished, latent_collision
+    global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action, pub_action
+    
+    vel_cars_left_lane = int(speed_left)
+    vel_cars_right_lane = int(speed_right)    
+    
+    print("INITIALIZING POLICY...", flush=True)
+    rospy.init_node("policy")
+    rate = rospy.Rate(10) #Hz
+       
+    rospy.Subscriber("/free/north", Bool, callback_free_N)              
+    rospy.Subscriber("/free/north_west", Bool, callback_free_NW)
+    rospy.Subscriber("/free/west", Bool, callback_free_W)
+    rospy.Subscriber("/free/south_west", Bool, callback_free_SW)
+    rospy.Subscriber("/free/north_east", Bool, callback_free_NE)        
+    rospy.Subscriber("/free/east", Bool, callback_free_E)    
+    rospy.Subscriber("/free/south_east", Bool, callback_free_SE)
+    rospy.Subscriber("/current_lane", Bool, callback_curr_lane)
+    rospy.Subscriber("/latent_collision", Bool, callback_latent_collision)
+       
+    pub_policy_started  = rospy.Publisher("/policy_started", Empty, queue_size=1)
+    pub_cruise = rospy.Publisher("/cruise/enable", Bool, queue_size=1)
+    pub_keep_distance    = rospy.Publisher("/follow/enable", Bool, queue_size=1)
+    pub_change_lane_on_left = rospy.Publisher("/start_change_lane_on_left", Bool, queue_size=1)
+    pub_change_lane_on_right = rospy.Publisher("/start_change_lane_on_right", Bool, queue_size=1)    
+    pub_action = rospy.Publisher("/action", String, queue_size=1)
+    
+    pub_speed_cars_left_lane = rospy.Publisher("/speed_cars_left_lane", Float64, queue_size=1)
+    pub_speed_cars_right_lane = rospy.Publisher("/speed_cars_right_lane", Float64, queue_size=1)     
+
+    pub_swerve_right = rospy.Publisher("/start_swerve_right", Bool, queue_size=1)      
+    pub_swerve_left = rospy.Publisher("/start_swerve_left", Bool, queue_size=1)          
+
+    free_N = True
+    free_NW = True
+    free_W  = True
+    free_SW = True
+    free_NE = True
+    free_E  = True                
+    free_SE = True
+    curr_lane = True
+    
+    free_N_prev = False
+    free_NW_prev = False
+    free_W_prev  = False
+    free_SW_prev = False
+    free_NE_prev = False
+    free_E_prev  = False                
+    free_SE_prev = False
+    curr_lane_prev = False
+       
+    latent_collision = False
+    first_time = True # to avoid consecutive counterfactual queries 
+
+    print(MLP_path, flush=True)    
+    try:
+       model = pickle.load(open(MLP_path, 'rb'))  
+    except Exception as error:
+       print("Error loading model:", error)  
+       sys.exit("Please enter to the subdirectory ./decision_models and run 'sh script.sh' on terminal before coming back")
+       
+    # Load Counterfactuals   
+    df = pd.read_csv(counterfactuals_path)
+
+    # Dictionary of observations
+    observations = {}
+
+    # Pause policy.py a little bit
+    rate = rospy.Rate(1) #Hz
+    i = 0
+    while not rospy.is_shutdown() and i < 2:
+        pub_policy_started.publish()
+        rate.sleep()
+        print("Publishing policy_started", i )
+        i = i + 1
+    rate = rospy.Rate(10) #Hz
+    
+    action = action_prev = "NA"            
+    while not rospy.is_shutdown():
+        pub_policy_started.publish()
+        pub_speed_cars_left_lane.publish(vel_cars_left_lane)
+        pub_speed_cars_right_lane.publish(vel_cars_right_lane) 
+        
+        # Patch   
+        if curr_lane:
+           free_NE = free_N
+        else: 
+           free_NW = free_N  
+
+        # Check if the order is correct to feed the MLP
+        # Truth values vs string ¿which data type is used?
+        observations.clear()
+        observations["action"] = action
+        observations["free_NW"] = free_NW
+        observations["free_W"] = free_W
+        observations["free_SW"] = free_SW
+        observations["free_NE"] = free_NE
+        observations["free_E"] = free_E
+        observations["free_SE"] = free_SE
+        observations["curr_lane"] = curr_lane
+
+        if not latent_collision:
+          try:
+             X = pd.DataFrame(columns=["curr_lane", "free_E", "free_NE", "free_NW", "free_SE", "free_SW", "free_W"])
+
+             X.loc[len(X)] = observations
+
+          except Exception as error:
+             print("An error occurred constructing predictors:", error) 
+               
+          try:
+             start_time = time.time()
+             y = model.predict(X)
+             action = y[0]
+             end_time = time.time()
+             testing_time = end_time - start_time
+             #print("MLP prediction time:", testing_time, flush = True)           
+          except Exception as error:
+             print("An error occurred getting prediction:", error)
+            
+          first_time = True          
+        
+        # latent_collision == True
+        else: 
+          if first_time:
+            first_time = False
+            
+            # Record the start time
+            start_time = time.time()
+            # Apply the filter dynamically using the criteria
+            filtered_rows = df[
+              (df['action'] == observations['action']) &
+              (df['curr_lane'] == observations['curr_lane']) &
+              (df['free_E'] == observations['free_E']) &
+              (df['free_NE'] == observations['free_NE']) &
+              (df['free_NW'] == observations['free_NW']) &
+              (df['free_SE'] == observations['free_SE']) &
+              (df['free_SW'] == observations['free_SW']) &
+              (df['free_W'] == observations['free_W'])
+            ]
+
+            # Calculate the elapsed time
+            elapsed_time = time.time() - start_time    
+            
+            # Display the elapsed time
+            #print(f"Filtering operation completed in: {elapsed_time:.4f} seconds")   
+            
+            # Check if there are any matches
+            if not filtered_rows.empty:
+               #print("Matching rows found:")
+               #print(filtered_rows)
+    
+               # Randomly select one row and display the 'iaction' value
+               random_row = filtered_rows.sample(n=1)
+               action = random_row['iaction'].values[0]  # Get the 'iaction' value of the selected row
+               #print(f"Randomly selected row's 'iaction' value:", end=" ")
+                                                                   
+            else:
+               print("ERROR: no matching rows found. Default action:", end=" ")          
+
+        # To avoid excessive message output to terminal
+        if action_prev != action or free_N_prev != free_N or free_NW_prev != free_NW or free_W_prev != free_W or free_SW_prev != free_SW or free_NE_prev != free_NE or free_E_prev != free_E or free_SE_prev != free_SE or curr_lane_prev != curr_lane:
+          pub_action.publish(action)
+          print("latent_collision", latent_collision, "curr_lane", curr_lane, "free_NE", free_NE, "free_NW", free_NW, "free_SW", free_SW, "free_W", free_W, "free_SE", free_SE, "free_E", free_E, sep = " ", flush = True) 
+          print(action, flush = True)
+          
+          if action == "cruise":
+             cruise()                
+          elif action == "keep":
+             keep_distance()        
+          elif action == "change_to_left":
+             change_lane_on_left()
+             #print ("Waiting for change lane to finish...", flush = True, end="")
+             #rospy.wait_for_message("/change_lane_finished", Bool, timeout=10000.0)
+          elif action == "change_to_right":
+             change_lane_on_right()                
+             #print ("Waiting for change lane to finish...", flush = True, end="")
+             #rospy.wait_for_message("/change_lane_finished", Bool, timeout=10000.0)
+          elif action == "swerve_left":
+             swerve_left()
+          elif action == "swerve_right":
+             swerve_right()
+             
+          action_prev = action   
+          free_N_prev = free_N
+          free_NW_prev = free_NW
+          free_W_prev  = free_W
+          free_SW_prev = free_SW
+          free_NE_prev = free_NE
+          free_E_prev  = free_E                
+          free_SE_prev = free_SE
+          curr_lane_prev = curr_lane   
+
+        rate.sleep()
+
+if __name__ == "__main__":
+
+    speed_left = 0
+    speed_right = 0
+    MLP = ""
+    counterfactuals = ""
+
+    if len(sys.argv) != 5:
+        print("Usage: rosrun opposite_direction MLP_control.py speed_left=value1 (in m/s) speed_right=value2 (in m/s) MLP=filename.mlp  counterfactuals=counterfactuals.csv\n"
+              "Suggested values: speed_left=5 speed_right=3 MLP=MLP_10.mlp counterfactuals=counterfactuals.csv")
+    else:
+        try:
+            # Parse arguments
+            arg1 = sys.argv[1].split('=')
+            arg2 = sys.argv[2].split('=')
+            arg3 = sys.argv[3].split('=')            
+            arg4 = sys.argv[4].split('=')            
+            
+            if len(arg1) != 2 or len(arg2) != 2 or len(arg3) != 2 or len(arg4) != 2:
+                raise ValueError("Arguments must be in the format speed_left=value (in m/s) and speed_right=value (in m/s) and MLP=filename.mlp and  counterfactuals=counterfactuals.csv")
+
+            # Extract and convert values
+            if arg1[0] == "speed_left" and arg2[0] == "speed_right" and arg3[0] == "MLP" and arg4[0] == "counterfactuals":
+                speed_left = float(arg1[1])
+                speed_right = float(arg2[1])
+                MLP = arg3[1]
+                counterfactuals = arg4[1]
+                MLP_path = os.path.join(rospkg.RosPack().get_path('opposite_direction'), 'decision_models', MLP)
+                #print(MLP_path, flush=True)
+                counterfactuals_path = os.path.join(rospkg.RosPack().get_path('opposite_direction'), 'decision_models', counterfactuals)
+                #print(counterfactuals_path, flush=True)
+                                
+            else:
+                raise ValueError("Arguments must be named speed_left,  speed_right, MLP and counterfactuals")
+            
+            print(f"Running with speed_left={speed_left} and speed_right={speed_right} MLP={MLP} counterfactuals={counterfactuals}")
+            main(speed_left=speed_left, speed_right=speed_right, MLP_path=MLP_path, counterfactuals_path=counterfactuals_path)
+        except ValueError as e:
+            print(f"Error: {e}")
+        except rospy.ROSInterruptException:
+            pass    
+

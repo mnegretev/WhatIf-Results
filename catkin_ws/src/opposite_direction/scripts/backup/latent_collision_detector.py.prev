@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""
+This node detects if the car succeeded its last action using Euclidean distance between points in two consecutive readings of the accelerometer sensor
+"""
+import math
+import rospy
+from std_msgs.msg import Bool, Float64, String
+from rosgraph_msgs.msg import Clock 
+import time
+
+def mysleep(secs):
+    global curr_time
+
+    init_time = curr_time        
+    diff = 0.0
+    while diff <= secs or not rospy.is_shutdown(): # and not rospy.is_shutdown():
+       diff  = curr_time - init_time
+
+def callback_sim_time(msg):
+    global curr_time            
+    sim_time = msg
+    sim_secs = sim_time.clock.secs 
+    sim_nsecs = sim_time.clock.nsecs
+    curr_time = sim_secs + sim_nsecs / (10**9) 
+
+def callback_free_N(msg):
+    global free_N
+    free_N = msg.data
+
+def callback_free_NW(msg):
+    global free_NW
+    free_NW = msg.data
+
+def callback_free_W(msg):
+    global free_W
+    free_W = msg.data
+    
+def callback_free_SW(msg):
+    global free_SW
+    free_SW = msg.data
+    
+def callback_free_NE(msg):
+    global free_NE
+    free_NE = msg.data    
+
+def callback_free_E(msg):
+    global free_E
+    free_E = msg.data    
+
+def callback_free_SE(msg):
+    global free_SE
+    free_SE = msg.data    
+        
+def callback_curr_lane(msg):
+    global curr_lane
+    curr_lane = msg.data
+
+def callback_action(msg):
+    global action
+    action = msg.data
+    
+def callback_dist_north(msg):
+    global dist_north
+    dist_north = msg.data    
+    
+def callback_speed(msg):
+    global speed
+    speed = msg.data
+
+def callback_steering(msg):
+    global steering
+    steering = msg.data            
+
+def main():
+    global latent_collision, free_N, free_NW, free_W, free_SW, free_NE, free_E, free_SE, curr_lane, action, dist_north, curr_time, speed, steering   
+    
+    print("INITIALIZING LATENT_COLLISION_DETECTOR...", flush=True)
+    rospy.init_node("latent_collision_detector")
+    rate = rospy.Rate(10)
+        
+    rospy.Subscriber("/clock", Clock, callback_sim_time)            
+    rospy.Subscriber("/free/north", Bool, callback_free_N)              
+    rospy.Subscriber("/free/north_west", Bool, callback_free_NW)
+    rospy.Subscriber("/free/west"      , Bool, callback_free_W)
+    rospy.Subscriber("/free/south_west", Bool, callback_free_SW)
+    rospy.Subscriber("/free/north_east"      , Bool, callback_free_NE)        
+    rospy.Subscriber("/free/east"      , Bool, callback_free_E)    
+    rospy.Subscriber("/free/south_east"      , Bool, callback_free_SE)
+    rospy.Subscriber("/current_lane", Bool, callback_curr_lane)        
+    rospy.Subscriber("/action", String, callback_action)                
+    rospy.Subscriber("/obstacle/dist_north", Float64, callback_dist_north)                
+    rospy.Subscriber("/speed", Float64, callback_speed)  
+    rospy.Subscriber("/steering", Float64, callback_steering)    
+        
+    pub_latent_collision  = rospy.Publisher("/latent_collision", Bool, queue_size=1)
+
+    action = "cruise"
+    free_N = True
+    free_NW = True
+    free_W  = True
+    free_SW = True
+    free_NE = True
+    free_E  = True                
+    free_SE = True
+    curr_lane = True
+    latent_collision = False
+
+    dist_threshold = 12 # meters
+    time_collision_threshold = 0.15 # seconds       
+    dist_north = 0.0
+    prev_dist_north = 0.0
+    delta_dist_north = 0.0
+    v_rel = 0.0 
+    v_front = 0.0
+    curr_time = 1.0 # to avoid division by 0
+    prev_time = 0.0   
+    latent_collision = False
+    first_time = True
+    TTC = float('inf') # time-to-collision
+    while not rospy.is_shutdown():
+
+       delta_dist_north = dist_north - prev_dist_north
+       if delta_dist_north != 0.0:     
+          # Patch   
+          if curr_lane:
+             free_NE = free_N
+          else: 
+             free_NW = free_N     
+
+          delta_t = curr_time - prev_time
+          if delta_t > 0:
+             v_rel = delta_dist_north / delta_t  # Relative velocity (originally negative)
+             #v_front = speed - v_rel
+             TTC = float('inf')
+                   
+             if v_rel != 0: 
+                TTC = dist_north / v_rel 
+          if dist_north < dist_threshold or TTC < time_collision_threshold:
+             #string = "Collision ahead! dist_north=" +  str(dist_north) + " TTC= " + str(TTC)
+             string = "dist_north=" +  str(dist_north) + " prev_dist_north=" +  str(prev_dist_north) + " delta_dist_north= " + str(delta_dist_north) + " curr_time= " + str(curr_time) + " prev_time= " + str(prev_time) + " delta_t= " + str(delta_t) + " v_rel= " + str(v_rel) + " v_front= " + str(v_front) + " TTC= " + str(TTC)
+             print(string, flush = True)             
+
+       pub_latent_collision.publish(latent_collision)  
+       prev_dist_north = dist_north
+       prev_time = curr_time  
+       rate.sleep()
+    
+
+if __name__ == "__main__":
+    main()    
+
+#string = "Latent collision detected A=" + str(A) + " B=" + str(B) + " C=" + str(C) + " D=" + str(D) + " E=" + str(E) + " F=" + str(F) + " G=" + str(G) + " H=" + str(H) + " I=" + str(I) + " dist_north=" + str(dist_north) + " prev_dist_north=" + str(prev_dist_north)
+
+# string = "dist_north=" +  str(dist_north) + " prev_dist_north=" +  str(prev_dist_north) + " delta_dist_north= " + str(delta_dist_north) + " curr_time= " + str(curr_time) + " prev_time= " + str(prev_time) + " delta_t= " + str(delta_t) + " v_rel= " + str(v_rel) + " v_front= " + str(v_front) + " TTC= " + str(TTC)  
+#          print(string, flush = True)
+
+
+###############################################
+
+#!/usr/bin/env python3
+"""
+This node detects if the car succeeded its last action using Euclidean distance between points in two consecutive readings of the accelerometer sensor
+"""
+import math
+import rospy
+from std_msgs.msg import Bool, Float64, String
+from rosgraph_msgs.msg import Clock 
+import time
+from geometry_msgs.msg import Pose2D
+
+def mysleep(secs):
+    global curr_time
+
+    init_time = curr_time        
+    diff = 0.0
+    while diff <= secs and not rospy.is_shutdown(): # and not rospy.is_shutdown():
+       diff  = curr_time - init_time
+
+def callback_sim_time(msg):
+    global curr_time             
+    sim_time = msg
+    sim_secs = sim_time.clock.secs 
+    sim_nsecs = sim_time.clock.nsecs
+    curr_time = sim_secs + sim_nsecs / (10**9) 
+    
+def callback_curr_pos(msg):
+    global sdc_curr_pos   
+
+    sdc_curr_pos.x = msg.x
+    sdc_curr_pos.y = msg.y
+    sdc_curr_pos.theta = msg.theta
+    
+def callback_speed(msg):
+    global speed
+    speed = msg.data 
+
+def callback_steering(msg):
+    global steering
+    steering = msg.data            
+            
+def callback_car_1_pos(msg):
+    global car_1_pos   
+
+    car_1_pos.x = msg.x
+    car_1_pos.y = msg.y
+    car_1_pos.theta = msg.theta 
+       
+def callback_car_2_pos(msg):
+    global car_2_pos   
+
+    car_2_pos.x = msg.x
+    car_2_pos.y = msg.y
+    car_2_pos.theta = msg.theta            
+
+def main():
+    global curr_time, speed, steering, sdc_curr_pos, car_1_pos, car_2_pos    
+    
+    print("INITIALIZING SPEED CALCULATION...", flush=True)
+    rospy.init_node("latent_collision_detector")
+    rate = rospy.Rate(10)
+        
+    sdc_curr_pos = Pose2D()   
+    car_1_pos = Pose2D() 
+    car_2_pos = Pose2D()    
+        
+    rospy.Subscriber("/clock", Clock, callback_sim_time)            
+                
+    rospy.Subscriber("/self_driving_pose", Pose2D, callback_curr_pos)                 
+    rospy.Subscriber("/speed", Float64, callback_speed)  
+    rospy.Subscriber("/steering", Float64, callback_steering)
+    rospy.Subscriber("/car_1_pose", Pose2D, callback_car_1_pos)
+    rospy.Subscriber("/car_2_pose", Pose2D, callback_car_2_pos) 
+    
+    # Extras
+    sdc_curr_pos.x = sdc_curr_pos.y = sdc_curr_pos.theta = 0.0    
+    car_1_pos.x = car_1_pos.y = car_1_pos.theta = 0.0     
+    car_2_pos.x = car_2_pos.y = car_2_pos.theta = 0.0               
+        
+    curr_time = 0.0
+    prev_time = 0.0
+    speed = 0.0
+    estimated_speed_sdc = 0.0    
+    estimated_speed_car1 = 0.0
+    estimated_speed_car2 = 0.0                
+    prev_time = 0.0
+    curr_time = 0.0
+    delta_t = 0.0
+    time_diff = 0.25
+    prev_xpos_sdc = 0.0      
+    prev_xpos_car1 = 0.0
+    prev_xpos_car2 = 0.0 
+    
+    dist_north = prev_dist_north = float('inf')
+    delta_dist_north = 0.0    
+    TTC = float('inf')    
+                
+    while not rospy.is_shutdown():
+    
+       delta_dist_north = dist_north - prev_dist_north
+       if delta_dist_north <= 10.0:
+          # Patch   
+          if curr_lane:
+             free_NE = free_N
+          else: 
+             free_NW = free_N     
+       
+          delta_t = (curr_time - prev_time)
+       if delta_t > time_diff: 
+         # m/s
+         estimated_speed_sdc = (sdc_curr_pos.x - prev_xpos_sdc) / delta_t
+         estimated_speed_car1 = (car_1_pos.x - prev_xpos_car1) / delta_t
+         estimated_speed_car2 = -(car_2_pos.x - prev_xpos_car2) / delta_t
+              
+         delta_t = 0.0 
+         
+         prev_time = curr_time
+
+       prev_dist_north = dist_north         
+       prev_xpos_sdc = sdc_curr_pos.x
+       prev_xpos_car1 = car_1_pos.x
+       prev_xpos_car2 = car_2_pos.x
+         
+       #mysleep(1)
+       rate.sleep()
+    
+
+if __name__ == "__main__":
+    main()    
+
+#          string = "curr_time=" + str(curr_time) + " prev_time=" + str(prev_time) + " delta_t=" + str(delta_t) + " requested_speed_sdc=" + str(speed) + " estimated_speed_sdc=" + str(estimated_speed_sdc) + " estimated_speed_car1=" + str(estimated_speed_car1) + " estimated_speed_car2=" + str(estimated_speed_car2) + " sdc_curr_pos.x=" + str(sdc_curr_pos.x) + " car_1_pos.x=" + str(car_1_pos.x) + " car_2_pos.x=" + str(car_2_pos.x)
+#         print(string, flush = True)
+
+dist_north=14.047903900970491
+dist_north=11.50006626013445
+dist_north=9.215796639291057
+dist_north=6.650593847084115
+
+prev_dist_north=11.50006626013445
+prev_dist_north=9.215796639291057
+prev_dist_north=6.650593847084115
+prev_dist_north=14.047903900970491
+
+delta_dist_north=-2.5586153134043332
+delta_dist_north=-2.5478376408360415
+delta_dist_north=-2.284269620843393
+delta_dist_north=-2.565202792206942
+
+delta_t=0.030000000000001137
+delta_t=0.030000000000001137
+delta_t=0.02999999999999936
+delta_t=0.02999999999999936
+
+estimated_speed_sdc=6.096376305570086
+estimated_speed_sdc=6.155114275471148
+estimated_speed_sdc=6.294097909726675
+estimated_speed_sdc=6.071242055074925
+
+v_rel=91.38355341904463
+v_rel=91.08303563666931
+v_rel=82.43641860450806
+v_rel=91.57800179530814
+
+
+TTC=0.15372464054393908
+TTC=0.12625914562189464
+TTC=0.11179278279305413
+TTC=0.07262217690607929
