@@ -85,10 +85,11 @@ def callback_enable_cruise(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     max_speed = initial_max_speed
     enable_cruise = msg.data
-    goal_rho_l   = 481.0
-    goal_theta_l = 2.085
-    goal_rho_r   = 466.0
-    goal_theta_r = 0.99
+    if msg.data:
+       goal_rho_l   = 481.0
+       goal_theta_l = 2.085
+       goal_rho_r   = 466.0
+       goal_theta_r = 0.99
     if(enable_cruise):
         enable_follow = False
 
@@ -97,10 +98,10 @@ def callback_enable_follow(msg):
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     max_speed = initial_max_speed
     enable_follow = msg.data
-    goal_rho_l   = 481.0
-    goal_theta_l = 2.085
-    goal_rho_r   = 466.0
-    goal_theta_r = 0.99
+    #goal_rho_l   = 481.0
+    #goal_theta_l = 2.085
+    #goal_rho_r   = 466.0
+    #goal_theta_r = 0.99
     if(enable_follow):
         enable_cruise = False
 
@@ -118,11 +119,12 @@ def callback_start_swerve_left(msg):
     global start_swerve_left, enable_follow, enable_cruise, max_speed
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     #start_swerve_left = msg.data
-    max_speed = 30
-    goal_rho_l   = 385.0
-    goal_theta_l = 2.37
-    goal_rho_r   = 508.0
-    goal_theta_r = 1.16
+    if msg.data:
+       max_speed = 30
+       goal_rho_l   = 385.0
+       goal_theta_l = 2.37
+       goal_rho_r   = 508.0
+       goal_theta_r = 1.16
     # if msg.data:
     #     enable_follow, enable_cruise = False, False
 
@@ -130,11 +132,12 @@ def callback_start_swerve_right(msg):
     global start_swerve_right, enable_follow, enable_cruise, max_speed
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
     #start_swerve_right = msg.data
-    max_speed = 30
-    goal_rho_l   = 514.0
-    goal_theta_l = 1.93
-    goal_rho_r   = 300.0
-    goal_theta_r = 0.57
+    if msg.data:
+       max_speed = 30
+       goal_rho_l   = 514.0
+       goal_theta_l = 1.93
+       goal_rho_r   = 300.0
+       goal_theta_r = 0.57
     # if msg.data:
     #     enable_follow, enable_cruise = False, False
 
@@ -189,6 +192,8 @@ def callback_free_east(msg):
 def callback_free_south_east(msg):
     global free_south_east
     free_south_east = msg.data    
+    
+   
 
 def calculate_turning_steering(w, L, v):
     # Steering is calculated from the kinematic model:  w = (v sin(d)) / L where:
@@ -221,6 +226,7 @@ def main():
     global enable_cruise, enable_follow, dist_to_obs, start_change_lane_on_left, start_change_lane_on_right
     global start_pass_on_left, start_pass_on_right, start_swerve_left, start_swerve_right
     global goal_rho_l, goal_theta_l, goal_rho_r, goal_theta_r
+
     
     max_speed = 30      #Maximum speed for following and steady motion behaviors
     initial_max_speed = 30
@@ -279,7 +285,7 @@ def main():
     
     pub_speed = rospy.Publisher('/speed', Float64, queue_size=1)
     pub_angle = rospy.Publisher('/steering', Float64, queue_size=1)
-    pub_change_lane_finshed = rospy.Publisher('/change_lane_finished', Bool, queue_size=1)
+    pub_action_finished = rospy.Publisher('/action_finished', Bool, queue_size=1)
     pub_pass_finished = rospy.Publisher('/pass_finished', Bool, queue_size=1)
     msg_left_lane  = rospy.wait_for_message('/demo/left_lane' , Float64MultiArray, timeout=10000)
     msg_right_lane = rospy.wait_for_message('/demo/right_lane', Float64MultiArray, timeout=10000)
@@ -298,7 +304,7 @@ def main():
     start_pass_on_right       = False
     start_swerve_left          = False
     start_swerve_right         = False
-
+    
     state = SM_INIT
     speed, steering = 0,0
     current_x, current_y, current_a = 0,0,0
@@ -351,6 +357,7 @@ def main():
 
         elif state == SM_START_CAR_FOLLOWING:
             speed,steering = calculate_control(lane_rho_l,lane_theta_l,lane_rho_r,lane_theta_r,goal_rho_l,goal_theta_l,goal_rho_r,goal_theta_r,dist_to_obs)
+            #print([speed,steering, lane_rho_l,lane_theta_l,lane_rho_r,lane_theta_r,goal_rho_l,goal_theta_l,goal_rho_r,goal_theta_r,dist_to_obs],   flush = True) 
             if not enable_follow:
                 state = SM_WAITING_FOR_NEW_TASK
 
@@ -372,7 +379,7 @@ def main():
             steering = calculate_turning_steering(-1.2, 2.9, speed)
             if current_y > 1.0 or abs(current_a) < 0.2: # Vehicle has moved to the left lane. Left lane has y=1.5
                 print("Change lane on left finished")
-                pub_change_lane_finshed.publish(True)
+                pub_action_finished.publish(True)
                 state = SM_WAITING_FOR_NEW_TASK
 
         #
@@ -392,7 +399,7 @@ def main():
             steering = calculate_turning_steering(1.2, 2.9, speed)
             if current_y < -1.0 or abs(current_a) < 0.2: #Vehicle has moved to the right lane. Right lane has y=-1.5
                 print("Change lane on right finished")
-                pub_change_lane_finshed.publish(True)
+                pub_action_finished.publish(True)
                 state = SM_WAITING_FOR_NEW_TASK
 
         #
@@ -403,7 +410,7 @@ def main():
                 speed = max_speed
             steering = calculate_turning_steering(0.5, 2.9, speed)
             if current_y > -1.0:
-                print("Moving to right to finish swiving to left")
+                print("Moving to right to finish swerving to left")
                 state = SM_SWERVE_LEFT_2 
 
         elif state == SM_SWERVE_LEFT_2:
@@ -411,8 +418,8 @@ def main():
                 speed = max_speed
             steering = calculate_turning_steering(-1.2, 2.9, speed)
             if current_y > 1.0 or abs(current_a) < 0.2: # Vehicle has swerved to left. Left lane has y=1.5
-                print("Swive to left finished")
-                pub_change_lane_finshed.publish(True)
+                print("Swerve to left finished")
+                pub_action_finished.publish(True)
                 state = SM_WAITING_FOR_NEW_TASK
 
         #
@@ -423,7 +430,7 @@ def main():
                 speed = max_speed
             steering = calculate_turning_steering(-0.5, 2.9, speed)
             if current_y < 1.0: #Vehicle has moved to the right. Left lane has y = 1.5 and center is around y=0
-                print("Moving to left to finish swiving to right")
+                print("Moving to left to finish swerving to right")
                 state = SM_SWERVE_RIGHT_2
 
         elif state == SM_SWERVE_RIGHT_2:
@@ -431,8 +438,8 @@ def main():
                 speed = max_speed
             steering = calculate_turning_steering(1.2, 2.9, speed)
             if current_y < -1.0 or abs(current_a) < 0.2: #Vehicle has moved to the right lane. Right lane has y=-1.5
-                print("Swive to right finished")
-                pub_change_lane_finshed.publish(True)
+                print("Swerve to right finished")
+                pub_action_finished.publish(True)
                 state = SM_WAITING_FOR_NEW_TASK
 
 
@@ -520,10 +527,12 @@ def main():
                 print("Passing on right finished")
                 pub_pass_finished.publish(True)
                 state = SM_WAITING_FOR_NEW_TASK
-                
+                  
         else:
             print("Invalid STATE")
             break;
+
+            
         #print([speed, steering])
         pub_speed.publish(speed)
         pub_angle.publish(steering)

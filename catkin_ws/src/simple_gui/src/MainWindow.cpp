@@ -20,8 +20,8 @@ MainWindow::MainWindow(QWidget *parent) :
     QObject::connect(ui->btnCruise, SIGNAL(clicked()), this, SLOT(btn_cruise_clicked()));
     QObject::connect(ui->btnFollow, SIGNAL(clicked()), this, SLOT(btn_follow_clicked()));
     QObject::connect(ui->btnChangeRight, SIGNAL(clicked()), this, SLOT(btn_change_right_clicked()));
-    QObject::connect(ui->btnSwiveLeft, SIGNAL(clicked()), this, SLOT(btn_swive_left_clicked()));
-    QObject::connect(ui->btnSwiveRight, SIGNAL(clicked()), this, SLOT(btn_swive_right_clicked()));
+    QObject::connect(ui->btnSwerveLeft, SIGNAL(clicked()), this, SLOT(btn_swerve_left_clicked()));
+    QObject::connect(ui->btnSwerveRight, SIGNAL(clicked()), this, SLOT(btn_swerve_right_clicked()));
 }
 
 MainWindow::~MainWindow()
@@ -118,12 +118,12 @@ void MainWindow::btn_change_right_clicked()
     qtRosNode->publish_change_right();
 }
 
-void MainWindow::btn_swive_left_clicked()
+void MainWindow::btn_swerve_left_clicked()
 {
-    qtRosNode->publish_start_swive_left();
+    qtRosNode->publish_start_swerve_left();
 }
 
-void MainWindow::btn_swive_right_clicked()
+void MainWindow::btn_swerve_right_clicked()
 {
-    qtRosNode->publish_start_swive_right();
+    qtRosNode->publish_start_swerve_right();
 }

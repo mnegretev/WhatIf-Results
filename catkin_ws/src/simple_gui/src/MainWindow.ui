@@ -190,7 +190,7 @@ QRadioButton::indicator{
      <number>3</number>
     </property>
    </widget>
-   <widget class="QPushButton" name="btnSwiveRight">
+   <widget class="QPushButton" name="btnSwerveRight">
     <property name="geometry">
      <rect>
       <x>500</x>
@@ -200,10 +200,10 @@ QRadioButton::indicator{
      </rect>
     </property>
     <property name="text">
-     <string>Swive Right</string>
+     <string>Swerve Right</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="btnSwiveLeft">
+   <widget class="QPushButton" name="btnSwerveLeft">
     <property name="geometry">
      <rect>
       <x>140</x>
@@ -213,7 +213,7 @@ QRadioButton::indicator{
      </rect>
     </property>
     <property name="text">
-     <string>Swive Left</string>
+     <string>Swerve Left</string>
     </property>
    </widget>
   </widget>

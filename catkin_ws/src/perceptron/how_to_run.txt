@@ -1,0 +1,71 @@
+######################################
+MLP Only
+######################################
+
+Opposite direction - Final tests 17/12/24 - 14:30
+
+1) 
+
+roslaunch perceptron straight.launch world:=straight_road_left max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=15 speed_right=3 MLP=MLP_10.mlp 
+
+
+2)
+
+roslaunch perceptron straight.launch world:=straight_road_right max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=15 speed_right=4 MLP=MLP_10.mlp 
+
+3) 
+
+roslaunch perceptron straight.launch world:=turn_to_right max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=15 speed_right=8 MLP=MLP_10.mlp 
+
+4) 
+
+roslaunch perceptron straight.launch world:=turn_to_left max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=-15 speed_right=4 MLP=MLP_10.mlp
+
+5) 
+
+roslaunch perceptron straight.launch world:=straight_road_right_2 max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=7 speed_right=3 MLP=MLP_10.mlp 
+
+6) transversal_left
+
+roslaunch perceptron straight.launch world:=transversal_left max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=7 speed_right=-7 MLP=MLP_10.mlp 
+
+7) transversal_right
+
+roslaunch perceptron straight.launch world:=transversal_right max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP.py speed_left=-8 speed_right=7 MLP=MLP_10.mlp
+
+8)
+
+roslaunch perceptron straight.launch world:=rear_end max_speed:=30
+
+rosrun utils logger.py
+
+rosrun perceptron MLP_WhatIf.py speed_left=-7 speed_right=0 MLP=MLP_10.mlp 
+

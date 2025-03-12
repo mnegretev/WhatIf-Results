@@ -17,10 +17,10 @@ void QtRosNode::run()
     pub_steering    = n->advertise<std_msgs::Float64>("/steering",10);
     pub_start       = n->advertise<std_msgs::Empty>("/policy_started" ,10);
     pub_change_left = n->advertise<std_msgs::Bool> ("/start_change_lane_on_left",10);
-    pub_swive_left  = n->advertise<std_msgs::Bool> ("/start_swive_left", 10);
+    pub_swerve_left  = n->advertise<std_msgs::Bool> ("/start_swerve_left", 10);
     pub_cruise      = n->advertise<std_msgs::Bool> ("/cruise/enable",10);
     pub_follow      = n->advertise<std_msgs::Bool> ("/follow/enable",10);
-    pub_swive_right = n->advertise<std_msgs::Bool> ("/start_swive_right",10);
+    pub_swerve_right = n->advertise<std_msgs::Bool> ("/start_swerve_right",10);
     pub_change_right= n->advertise<std_msgs::Bool> ("/start_change_lane_on_right",10);
     pub_speed_cars_left  = n->advertise<std_msgs::Float64>("/speed_cars_left_lane", 1);
     pub_speed_cars_right = n->advertise<std_msgs::Float64>("/speed_cars_right_lane",1);
@@ -179,16 +179,16 @@ void QtRosNode::publish_speed_cars_right_lane(double v)
     pub_speed_cars_left.publish(msg);
 }
 
-void QtRosNode::publish_start_swive_left()
+void QtRosNode::publish_start_swerve_left()
 {
     std_msgs::Bool msg;
     msg.data = true;
-    pub_swive_left.publish(msg);
+    pub_swerve_left.publish(msg);
 }
 
-void QtRosNode::publish_start_swive_right()
+void QtRosNode::publish_start_swerve_right()
 {
     std_msgs::Bool msg;
     msg.data = true;
-    pub_swive_right.publish(msg);
+    pub_swerve_right.publish(msg);
 }

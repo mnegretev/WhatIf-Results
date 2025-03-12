@@ -1,0 +1,17 @@
+
+6) transversal_left
+
+roslaunch counterfactuals straight.launch world:=transversal_left max_speed:=30
+
+rosrun utils logger.py
+
+rosrun counterfactuals MLP_WhatIf.py speed_left=7 speed_right=-7 MLP=MLP_10.mlp counterfactuals=counterfactuals.csv choices=counterfactuals_action_choice.csv
+
+
+7) transversal_right
+
+roslaunch counterfactuals straight.launch world:=transversal_right max_speed:=30
+
+rosrun utils logger.py
+
+rosrun counterfactuals MLP_WhatIf.py speed_left=-8 speed_right=7 MLP=MLP_10.mlp counterfactuals=counterfactuals.csv choices=counterfactuals_action_choice.csv
