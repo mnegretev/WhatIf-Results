@@ -67,5 +67,5 @@ roslaunch perceptron straight.launch world:=rear_end max_speed:=30
 
 rosrun utils logger.py
 
-rosrun perceptron MLP_WhatIf.py speed_left=-7 speed_right=0 MLP=MLP_10.mlp 
+rosrun perceptron MLP.py speed_left=-7 speed_right=0 MLP=MLP_10.mlp 
 

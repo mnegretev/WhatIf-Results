@@ -221,7 +221,7 @@ DEF BMW_X5 BmwX5 {
   ]
 }
 DEF vehicle_1 LincolnMKZSimple {
-  translation 62.21 34.53 0.45
+  translation 62.21 40.15 0.45
   rotation 0 0 1 -1.5707953071795862
   name "vehicle_1"
 }

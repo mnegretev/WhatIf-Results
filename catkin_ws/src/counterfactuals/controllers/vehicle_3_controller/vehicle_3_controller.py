@@ -2,7 +2,7 @@ import math
 from vehicle import Driver
 from controller import Radar
 import rospy
-from std_msgs.msg import Bool, Float64
+from std_msgs.msg import Bool, Float64, Empty
 from geometry_msgs.msg import Pose2D
 
 SM_INIT = 0
@@ -96,6 +96,11 @@ while not rospy.is_shutdown() and i < 2:
    print("vehicle_3_controller started", i )
    i = i + 1
    rate = rospy.Rate(10) #Hz
+
+# Wait for policy node
+print("Vehicle 3.->Waiting for start signal", flush = True)
+rospy.wait_for_message('/vehicle_started', Empty, timeout=None)
+print("Vehicle 3.->Start signal received", flush = True)
 
 state = SM_INIT
 steering = 0.0

@@ -1,0 +1,27 @@
+
+
+1) 
+
+El coche inicia en carril derecho e intenta rebasar por la izquierda. No ejecuta swerve_right.
+
+2)
+
+
+3) 
+
+
+4) 
+
+
+5) 
+
+
+6) 
+
+
+7) 
+
+
+8)
+
+

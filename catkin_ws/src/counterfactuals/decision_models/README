@@ -1,1 +1,5 @@
 Si la carga de archivos falla, entonces correr script.sh
+
+filter_counterfactuals.R para obtener el archivo de decisiones counterfactuals.csv con las mejores decisiones
+
+

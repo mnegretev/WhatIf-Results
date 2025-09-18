@@ -144,9 +144,9 @@ def get_MLP_action(obs_state, model):
 
     return action
 
-def get_WhatIf_action(obs_state, action, df_whatif, df_choices):
+def get_WhatIf_action(obs_state, action, df_whatif):
     # Apply the filter using the criteria
-    filtered_rows = df_whatif[
+    filtered_row = df_whatif[
       (df_whatif['action'] == action) &
       (df_whatif['curr_lane'] == obs_state['curr_lane']) &
       (df_whatif['free_E'] == obs_state['free_E']) &
@@ -158,39 +158,16 @@ def get_WhatIf_action(obs_state, action, df_whatif, df_choices):
     ]
             
     # Check if there are any matches
-    if not filtered_rows.empty: 
-       # Select one row and display the 'iaction' value
-       alternatives = pd.DataFrame(columns=['swerve_left',
-                                    'swerve_right', 
-                                    'cruise', 
-                                    'keep', 
-                                    'change_to_left', 
-                                    'change_to_right']
-                                  )
-       iactions = filtered_rows['iaction'].tolist()
-       alternatives.loc[0] = [0] * len(alternatives.columns)
-       for iaction in iactions:
-          if iaction in alternatives.columns:
-             alternatives.at[0, iaction] = 1
-
-       matching_row = df_choices[ (
-df_choices['swerve_left'] == alternatives.loc[0, 'swerve_left']) & (df_choices['swerve_right'] == alternatives.loc[0, 'swerve_right']) & (df_choices['cruise'] == alternatives.loc[0, 'cruise']) & (df_choices['keep'] == alternatives.loc[0, 'keep']) & (df_choices['change_to_left'] == alternatives.loc[0, 'change_to_left']) & (df_choices['change_to_right'] == alternatives.loc[0, 'change_to_right'])]
-
-       if not matching_row.empty:
-          if curr_lane:  
-             action = matching_row['right_lane'].values[0]
-          else:
-             action = matching_row['left_lane'].values[0]
-          abort = True                
-       else:
-          print("ERROR: no matching rows found in choices. Default action:", end=" ", flush = True)
-          action = "NA"
+    if not filtered_row.empty: 
+       print("filtered_row: ", filtered_row)
+       iaction = filtered_row.iloc[0]['iaction']
+       abort = True                
                
     else:
        print("ERROR: no matching rows found in counterfactuals. Default action:", end=" ", flush = True)
-       action = "NA"
+       iaction = "NA"
     
-    return action   
+    return iaction   
     
 def publish_action(action, prev_action, abort, obs_state, prev_obs_state, model, latent_collision, prev_latent_collision):
     # Finishing the output in every transition
@@ -236,7 +213,7 @@ def publish_action(action, prev_action, abort, obs_state, prev_obs_state, model,
                   
 
             
-def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual_choices_path):
+def main(speed_left, speed_right, MLP_path, counterfactuals_path):
     global free_N, free_NW, free_W, free_SW, free_NE, free_E, free_SE,  curr_lane, action_finished, latent_collision
     global pub_keep_distance, pub_cruise, pub_change_lane_on_left, pub_change_lane_on_right, pub_swerve_right, pub_swerve_left, pub_action, pub_action
     
@@ -258,6 +235,7 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
     rospy.Subscriber("/latent_collision", Bool, callback_latent_collision)
        
     pub_policy_started  = rospy.Publisher("/policy_started", Empty, queue_size=1)
+    pub_vehicle_started  = rospy.Publisher("/vehicle_started", Empty, queue_size=1)
     pub_cruise = rospy.Publisher("/cruise/enable", Bool, queue_size=1)
     pub_keep_distance  = rospy.Publisher("/follow/enable", Bool, queue_size=1)
     pub_change_lane_on_left = rospy.Publisher("/start_change_lane_on_left", Bool, queue_size=1)
@@ -284,14 +262,7 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
     except Exception as error:
        print("Error loading counterfactuals:", error)  
        sys.exit("Please enter to the directory ../decision_models and make shure the file is in the directory")
-       
-    # Load Counterfactual choices
-    try:  
-       df_choices = pd.read_csv(counterfactual_choices_path) 
-    except Exception as error:
-       print("Error loading counterfactual choices:", error)  
-       sys.exit("Please enter to the directory ../decision_models and make shure the file is in the directory")       
-    
+           
     action = "cruise" # The procedure should start with a valid action 
     prev_action = "NA"                   
 
@@ -326,15 +297,22 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
     rate = rospy.Rate(1) # Hz
     print("Publishing policy_started", flush = True)
     i = 0
-    while not rospy.is_shutdown() and i < 2:
+    while not rospy.is_shutdown() and i < 10: # Si no jala, aumentar a 100 el umbral
       pub_policy_started.publish()
       rate.sleep()
+      if i == 0:
+         print("Start your engines", flush = True, end='')
+      else:
+         print(".", flush = True, end='')
       i = i + 1
+        
+    print(" Go!", flush = True)    
     rate = rospy.Rate(10) #Hz
     
     dfa_state = DFA_INIT
     while not rospy.is_shutdown():
       pub_policy_started.publish()
+      pub_vehicle_started.publish()
       pub_speed_cars_left_lane.publish(vel_cars_left_lane)
       pub_speed_cars_right_lane.publish(vel_cars_right_lane) 
       
@@ -370,8 +348,7 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
                pub_abort.publish(abort)               
                action = get_WhatIf_action(obs_state, 
                                  action, 
-                                 df_whatif, 
-                                 df_choices
+                                 df_whatif
                                 )
                                 
                publish_action(action, prev_action, abort, obs_state, prev_obs_state, "WHATIF", latent_collision, prev_latent_collision)      
@@ -393,8 +370,7 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
                pub_abort.publish(abort)
                action = get_WhatIf_action(obs_state, 
                                  action, 
-                                 df_whatif, 
-                                 df_choices
+                                 df_whatif
                                 )
                publish_action(action, prev_action, abort, obs_state, prev_obs_state, "WHATIF", latent_collision, prev_latent_collision)
                # Transition
@@ -415,8 +391,7 @@ def main(speed_left, speed_right, MLP_path, counterfactuals_path, counterfactual
                pub_abort.publish(abort)
                action = get_WhatIf_action(obs_state, 
                                  action, 
-                                 df_whatif, 
-                                 df_choices
+                                 df_whatif
                                 )
                publish_action(action, prev_action, abort, obs_state, prev_obs_state, "WHATIF", latent_collision, prev_latent_collision)
                # Transition
@@ -451,34 +426,33 @@ if __name__ == "__main__":
     counterfactuals = ""
     counterfactual_choices = ""    
 
-    if len(sys.argv) != 6:
-        print("Usage: rosrun counterfactuals MLP_control.py speed_left=value1 (in m/s) speed_right=value2 (in m/s) MLP=filename.mlp  counterfactuals=counterfactuals.csv  choices=counterfactuals_action_choice.csv\n"
-              "Suggested values: speed_left=5 speed_right=3 MLP=MLP_10.mlp counterfactuals=counterfactuals.csv choices=counterfactuals_action_choice.csv")
+    if len(sys.argv) != 5:
+        print("Usage: rosrun counterfactuals MLP_control.py speed_left=value1 (in m/s) speed_right=value2 (in m/s) MLP=filename.mlp  counterfactuals=counterfactuals.csv\n"
+              "Suggested values: speed_left=5 speed_right=3 MLP=MLP_10.mlp counterfactuals=counterfactuals.csv")
     else:
         try:
             # Parse arguments
-            args = [arg.split('=') for arg in sys.argv[1:6]]
+            args = [arg.split('=') for arg in sys.argv[1:5]]
                         
             if not all(len(arg) == 2 for arg in args):
-                raise ValueError("Arguments must be in the format speed_left=value (in m/s) and speed_right=value (in m/s) and MLP=filename.mlp and  counterfactuals=counterfactuals.csv counterfactual_choices=counterfactuals_action_choice.csv")
+                raise ValueError("Arguments must be in the format speed_left=value (in m/s) and speed_right=value (in m/s) and MLP=filename.mlp and  counterfactuals=counterfactuals.csv")
 
             # Extract and convert values
             expected_keys = ["speed_left", "speed_right", "MLP", "counterfactuals", "choices"]
             if all(arg[0] == expected for arg, expected in zip(args, expected_keys)):
                speed_left, speed_right = map(float, (args[0][1], args[1][1]))
-               MLP, counterfactuals, counterfactual_choices = (arg[1] for arg in args[2:])
+               MLP, counterfactuals = (arg[1] for arg in args[2:])
                MLP_path = os.path.join(rospkg.RosPack().get_path('counterfactuals'), 'decision_models', MLP)
                #print(MLP_path, flush=True)
                counterfactuals_path =  os.path.join(rospkg.RosPack().get_path('counterfactuals'),
                   'decision_models', counterfactuals)
                #print(counterfactuals_path, flush=True)
-               counterfactual_choices_path =  os.path.join(rospkg.RosPack().get_path('counterfactuals'), 'decision_models', counterfactual_choices)
                                 
             else:
                 raise ValueError("Arguments must be named speed_left,  speed_right, MLP, counterfactuals and choices")
             
-            print(f"Running with speed_left={speed_left} and speed_right={speed_right} MLP={MLP} counterfactuals={counterfactuals} choices={counterfactual_choices}")
-            main(speed_left=speed_left, speed_right=speed_right, MLP_path=MLP_path, counterfactuals_path=counterfactuals_path, counterfactual_choices_path=counterfactual_choices_path)
+            print(f"Running with speed_left={speed_left} and speed_right={speed_right} MLP={MLP} counterfactuals={counterfactuals}")
+            main(speed_left=speed_left, speed_right=speed_right, MLP_path=MLP_path, counterfactuals_path=counterfactuals_path)
         except ValueError as e:
             print(f"Error: {e}")
         except rospy.ROSInterruptException:
